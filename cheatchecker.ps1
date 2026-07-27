@@ -1,13 +1,33 @@
 <#
     ===========================================================================
-    System Security & Trace Checker Script (Desktop Output)
+    System Security & Trace Checker Script
     ===========================================================================
 #>
 
 Clear-Host
 
-# �������������� ���������� ����� Check_Result.txt �� ������� ����
-$OutputFile = Join-Path -Path "$env:USERPROFILE\Desktop" -ChildPath "Check_Result.txt"
+# --------------------------------------------------------------------------
+# 1. ПРОВЕРКА ONEDRIVE И ОПРЕДЕЛЕНИЕ ПУТИ К РАБОЧЕМУ СТОЛУ
+# --------------------------------------------------------------------------
+
+# Проверка, запущен ли процесс OneDrive
+$OneDriveProcess = Get-Process -Name "OneDrive" -ErrorAction SilentlyContinue
+$IsOneDriveRunning = [bool]$OneDriveProcess
+
+# Проверка наличия директории OneDrive
+$OneDrivePath = "$env:USERPROFILE\OneDrive"
+$HasOneDriveFolder = Test-Path $OneDrivePath
+
+# Определение реального пути к Рабочему столу через Windows API 
+# (работает корректно даже при включенной синхронизации OneDrive)
+$DesktopPath = [Environment]::GetFolderPath("Desktop")
+
+# Резервный вариант, если путь к Рабочему столу недоступен
+if (-not $DesktopPath -or -not (Test-Path $DesktopPath)) {
+    $DesktopPath = $PWD.Path
+}
+
+$OutputFile = Join-Path -Path $DesktopPath -ChildPath "Check_Result.txt"
 $StartTime = Get-Date
 
 function Generate-CheckerReport {
@@ -21,6 +41,7 @@ function Generate-CheckerReport {
     $TraceInDefender = $false
     $FoundExecutables = [System.Collections.Generic.List[string]]::new()
 
+    # Сканирование целевых каталогов
     $TargetPaths = @(
         "C:\archivefix", "C:\clumsy", "C:\umbr", "C:\Umbrella", "C:\zap", 
         "C:\projects", "C:\temp", "$env:USERPROFILE\Downloads", "$env:APPDATA", 
@@ -35,6 +56,7 @@ function Generate-CheckerReport {
         }
     }
 
+    # Проверка службы Защитника Windows
     $defService = Get-Service -Name "WinDefend" -ErrorAction SilentlyContinue
     if (-not $defService -or $defService.Status -ne "Running") {
         $TraceInDefender = $true
@@ -70,9 +92,11 @@ function Generate-CheckerReport {
 
     Write-Output "Script-Run-Time: $($StartTime.ToString('dd.MM.yyyy HH:mm:ss'))"
     
+    # Подключенные диски
     $drives = (Get-PSDrive -PSProvider FileSystem).Root -join " "
     Write-Output "Connected Drives: $drives"
     
+    # Тома в реестре
     $regVolumes = (Get-ItemProperty -Path "HKLM:\SYSTEM\MountedDevices" -ErrorAction SilentlyContinue).PSObject.Properties | 
                   Where-Object { $_.Name -like "\DosDevices\*" } | 
                   ForEach-Object { $_.Name.Replace("\DosDevices\", "") }
@@ -82,13 +106,30 @@ function Generate-CheckerReport {
     Write-Output "Windows Installation: $($os.InstallDate.ToString('dd.MM.yyyy'))"
     Write-Output "Last Boot up Time: $($bootTime.ToString('dd.MM.yyyy HH:mm:ss'))"
 
-    $RecycleBin = Get-ChildItem -Path 'C:\$Recycle.Bin' -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if ($RecycleBin) {
-        Write-Output "Last Recycle Bin Activity: $($RecycleBin.LastWriteTime.ToString('dd.MM.yyyy HH:mm:ss'))"
+    # Статус OneDrive
+    Write-Output "`nOneDrive Status:"
+    if ($IsOneDriveRunning) {
+        Write-Output "  [!] OneDrive Process: ACTIVE (Running)"
     } else {
-        Write-Output "Last Recycle Bin Activity: Unknown / Empty"
+        Write-Output "  [+] OneDrive Process: INACTIVE (Not running)"
     }
 
+    if ($HasOneDriveFolder) {
+        Write-Output "  [-] OneDrive Directory: Present ($OneDrivePath)"
+    } else {
+        Write-Output "  [+] OneDrive Directory: Not found"
+    }
+    Write-Output "  [*] Target Desktop Path: $DesktopPath"
+
+    # Проверка активности Корзины
+    $RecycleBin = Get-ChildItem -Path 'C:\$Recycle.Bin' -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($RecycleBin) {
+        Write-Output "`nLast Recycle Bin Activity: $($RecycleBin.LastWriteTime.ToString('dd.MM.yyyy HH:mm:ss'))"
+    } else {
+        Write-Output "`nLast Recycle Bin Activity: Unknown / Empty"
+    }
+
+    # Подозрительное установленное ПО
     Write-Output "`nSuspicious Installs Check:"
     $Uninstalls = Get-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*", 
                                          "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" -ErrorAction SilentlyContinue |
@@ -102,6 +143,7 @@ function Generate-CheckerReport {
         Write-Output "  [+] No blacklisted analysis tools found in Registry"
     }
 
+    # Кеш DNS
     Write-Output "`nLocal-DNS Entries (Filtered):"
     $dnsEntries = Get-DnsClientCache -ErrorAction SilentlyContinue | Where-Object { $_.Entry -notmatch "local|microsoft|google|gta-five|discord|cloudflare" } | Select-Object -First 10
     if ($dnsEntries) {
@@ -112,8 +154,13 @@ function Generate-CheckerReport {
         Write-Output "  [+] Clean DNS Cache"
     }
 
+    # Настройки GTA V settings.xml
     Write-Output "`nMinus-Settings Check (GTA V settings.xml):"
     $gtaSettings = "$env:USERPROFILE\Documents\Rockstar Games\GTA V\settings.xml"
+    if (-not (Test-Path $gtaSettings) -and $HasOneDriveFolder) {
+        $gtaSettings = "$OneDrivePath\Documents\Rockstar Games\GTA V\settings.xml"
+    }
+
     if (Test-Path $gtaSettings) {
         $minusLines = Select-String -Path $gtaSettings -Pattern 'value="-' -ErrorAction SilentlyContinue
         if ($minusLines) {
@@ -127,6 +174,7 @@ function Generate-CheckerReport {
         Write-Output "    [!] settings.xml not found"
     }
 
+    # Время работы системных процессов
     Write-Output "`nProcess Uptime Scan"
     Write-Output "-------------------"
     $criticalProcesses = @("dnscache", "dwm", "explorer", "lsass", "PcaSvc", "sysmain", "WSearch", "DiagTrack", "DPS")
@@ -171,6 +219,7 @@ function Generate-CheckerReport {
         Write-Output "[+] Prefetch integrity normal"
     }
 
+    # Поиск скрытых файлов с пробелами
     $JournalUnicode = Get-ChildItem -Path "$env:LOCALAPPDATA\Temp", "C:\Windows\Prefetch" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "\s{3,}" }
     if ($JournalUnicode) {
         foreach ($uFile in $JournalUnicode) {
@@ -245,10 +294,9 @@ function Generate-CheckerReport {
 }
 
 # --------------------------------------------------------------------------
-# ���������� � ���� �� ������� �����
+# СОХРАНЕНИЕ В ФАЙЛ
 # --------------------------------------------------------------------------
-# ������� Out-File ���������� ������ ���� ���������� ��� ����� �������
 Generate-CheckerReport | Out-File -FilePath $OutputFile -Encoding utf8
 
-Write-Host "`n[+] �������� ������� ���������!" -ForegroundColor Green
-Write-Host "[+] ����� �������� �� ������� ����: $OutputFile" -ForegroundColor Yellow
+Write-Host "`n[+] Проверка успешно завершена!" -ForegroundColor Green
+Write-Host "[+] Отчет сохранен по пути: $OutputFile" -ForegroundColor Yellow
