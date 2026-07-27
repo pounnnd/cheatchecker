@@ -1,22 +1,10 @@
-<#
-    ===========================================================================
-    System Security & Trace Checker Script (Full Version + USN Journal Scanner)
-    ===========================================================================
-#>
-
 Clear-Host
 
-# --------------------------------------------------------------------------
-# 1. ПРОВЕРКА ONEDRIVE И ОПРЕДЕЛЕНИЕ ПУТИ К РАБОЧЕМУ СТОЛУ
-# --------------------------------------------------------------------------
-
-# Проверка процесса и директории OneDrive
 $OneDriveProcess = Get-Process -Name "OneDrive" -ErrorAction SilentlyContinue
 $IsOneDriveRunning = [bool]$OneDriveProcess
 $OneDrivePath = "$env:USERPROFILE\OneDrive"
 $HasOneDriveFolder = Test-Path $OneDrivePath
 
-# Определение реального пути к Рабочему столу
 $DesktopPath = [Environment]::GetFolderPath("Desktop")
 if (-not $DesktopPath -or -not (Test-Path $DesktopPath)) {
     $DesktopPath = $PWD.Path
@@ -27,16 +15,12 @@ $StartTime = Get-Date
 
 function Generate-CheckerReport {
     Write-Output "==========================================================================="
-    Write-Output "                       ОТЧЕТ ПРОВЕРКИ СИСТЕМЫ И СЛЕДОВ                     "
+    Write-Output "                       SYSTEM & TRACE SCAN REPORT                          "
     Write-Output "==========================================================================="
     
-    # --------------------------------------------------------------------------
-    # 1. ПОИСК ИСПОЛНЯЕМЫХ ФАЙЛОВ И ТРАССИРОВКА (Cheat Execution / Traces)
-    # --------------------------------------------------------------------------
     $TraceInDefender = $false
     $FoundExecutables = [System.Collections.Generic.List[string]]::new()
 
-    # Сканирование целевых папок
     $TargetPaths = @(
         "C:\archivefix", "C:\clumsy", "C:\umbr", "C:\Umbrella", "C:\zap", 
         "C:\projects", "C:\temp", "$env:USERPROFILE\Downloads", "$env:APPDATA", 
@@ -51,104 +35,95 @@ function Generate-CheckerReport {
         }
     }
 
-    # Проверка Защитника
     $defService = Get-Service -Name "WinDefend" -ErrorAction SilentlyContinue
     if (-not $defService -or $defService.Status -ne "Running") {
         $TraceInDefender = $true
     }
 
-    Write-Output "`n[!] РЕЗУЛЬТАТЫ СКАНИРОВАНИЯ ТРАССИРОВКИ:"
+    Write-Output "`n[!] SCAN RESULTS:"
     if ($TraceInDefender) {
-        Write-Output "[-] Обнаружены критические следы: Защитник Windows отключен или остановлен!"
+        Write-Output "[-] Severe Traces found: Defender Disabled / Stopped!"
     } else {
-        Write-Output "[+] Служба Защитника Windows активна"
+        Write-Output "[+] Defender Service is active"
     }
 
     if ($FoundExecutables.Count -gt 0) {
         foreach ($exe in ($FoundExecutables | Select-Object -Unique)) {
-            Write-Output "[-] Найден исполняемый файл читов/утилит: $exe"
+            Write-Output "[-] Executable trace found: $exe"
         }
     } else {
-        Write-Output "[+] Подозрительных standalone .exe в стандартных путях не обнаружено"
+        Write-Output "[+] No obvious standalone trace executables found in standard targets"
     }
 
     Write-Output ""
-    Write-Output "-------------------"
-    Write-Output "|      Система    |"
-    Write-Output "-------------------"
+    Write-Output "==================="
+    Write-Output "|      System     |"
+    Write-Output "==================="
     Write-Output ""
 
-    # --------------------------------------------------------------------------
-    # 2. МЕТРИКИ И ИНФОРМАЦИЯ О СИСТЕМЕ
-    # --------------------------------------------------------------------------
     $os = Get-CimInstance -ClassName Win32_OperatingSystem
     $bootTime = $os.LastBootUpTime
     $uptime = (Get-Date) - $bootTime
 
-    Write-Output "Время запуска скрипта: $($StartTime.ToString('dd.MM.yyyy HH:mm:ss'))"
+    Write-Output "Script Start Time: $($StartTime.ToString('dd.MM.yyyy HH:mm:ss'))"
     
     $drives = (Get-PSDrive -PSProvider FileSystem).Root -join " "
-    Write-Output "Подключенные диски: $drives"
+    Write-Output "Connected Drives: $drives"
     
     $regVolumes = (Get-ItemProperty -Path "HKLM:\SYSTEM\MountedDevices" -ErrorAction SilentlyContinue).PSObject.Properties | 
                   Where-Object { $_.Name -like "\DosDevices\*" } | 
                   ForEach-Object { $_.Name.Replace("\DosDevices\", "") }
-    Write-Output "Тома в реестре: $($regVolumes -join ', ')"
+    Write-Output "Volumes in Registry: $($regVolumes -join ', ')"
 
-    Write-Output "Версия Windows: $($os.Caption) (Сборка $($os.BuildNumber))"
-    Write-Output "Дата установки Windows: $($os.InstallDate.ToString('dd.MM.yyyy'))"
-    Write-Output "Время последней загрузки ПК: $($bootTime.ToString('dd.MM.yyyy HH:mm:ss'))"
+    Write-Output "Windows Version: $($os.Caption) (Build $($os.BuildNumber))"
+    Write-Output "Windows Installation Date: $($os.InstallDate.ToString('dd.MM.yyyy'))"
+    Write-Output "Last Boot Time: $($bootTime.ToString('dd.MM.yyyy HH:mm:ss'))"
 
-    # Статус OneDrive
-    Write-Output "`nСтатус OneDrive:"
+    Write-Output "`nOneDrive Status:"
     if ($IsOneDriveRunning) {
-        Write-Output "  [!] Процесс OneDrive: АКТИВЕН"
+        Write-Output "  [!] OneDrive Process: ACTIVE (Running)"
     } else {
-        Write-Output "  [+] Процесс OneDrive: НЕ АКТИВЕН"
+        Write-Output "  [+] OneDrive Process: INACTIVE (Not running)"
     }
 
     if ($HasOneDriveFolder) {
-        Write-Output "  [-] Папка OneDrive: Найдена ($OneDrivePath)"
+        Write-Output "  [-] OneDrive Directory: Present ($OneDrivePath)"
     } else {
-        Write-Output "  [+] Папка OneDrive: Отсутствует"
+        Write-Output "  [+] OneDrive Directory: Not found"
     }
-    Write-Output "  [*] Целевой путь Рабочего стола: $DesktopPath"
+    Write-Output "  [*] Target Desktop Path: $DesktopPath"
 
-    # Корзина
     $RecycleBin = Get-ChildItem -Path 'C:\$Recycle.Bin' -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if ($RecycleBin) {
-        Write-Output "`nПоследняя активность Корзины: $($RecycleBin.LastWriteTime.ToString('dd.MM.yyyy HH:mm:ss'))"
+        Write-Output "`nLast Recycle Bin Activity: $($RecycleBin.LastWriteTime.ToString('dd.MM.yyyy HH:mm:ss'))"
     } else {
-        Write-Output "`nПоследняя активность Корзины: Нет данных / Очищена"
+        Write-Output "`nLast Recycle Bin Activity: Unknown / Empty"
     }
 
-    # Установленное ПО
-    Write-Output "`nПроверка подозрительного установленного ПО:"
+    Write-Output "`nSuspicious Installs Check:"
     $Uninstalls = Get-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*", 
                                          "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" -ErrorAction SilentlyContinue |
                   Where-Object { $_.DisplayName -match "Process Hacker|System Informer|Cheat Engine|Process Explorer|Everything|Scylla|x64dbg" }
     
     if ($Uninstalls) {
         foreach ($app in $Uninstalls) {
-            Write-Output ("  - {0,-35} Версия: {1}" -f $app.DisplayName, $app.DisplayVersion)
+            Write-Output ("  - {0,-35} Version: {1}" -f $app.DisplayName, $app.DisplayVersion)
         }
     } else {
-        Write-Output "  [+] Запрещенных программ анализа в реестре не найдено"
+        Write-Output "  [+] No blacklisted analysis tools found in Registry"
     }
 
-    # Кэш DNS
-    Write-Output "`nЗаписи локального DNS-кэша:"
+    Write-Output "`nLocal DNS Cache (Filtered):"
     $dnsEntries = Get-DnsClientCache -ErrorAction SilentlyContinue | Where-Object { $_.Entry -notmatch "local|microsoft|google|gta-five|discord|cloudflare" } | Select-Object -First 10
     if ($dnsEntries) {
         foreach ($dns in $dnsEntries) {
-            Write-Output "  - Запись: $($dns.Entry) | Имя: $($dns.Name)"
+            Write-Output "  - Entry: $($dns.Entry) | Name: $($dns.Name)"
         }
     } else {
-        Write-Output "  [+] DNS-кэш чист"
+        Write-Output "  [+] Clean DNS Cache"
     }
 
-    # GTA V settings.xml
-    Write-Output "`nПроверка отрицательных значений в settings.xml (GTA V):"
+    Write-Output "`nMinus-Settings Check (GTA V settings.xml):"
     $gtaSettings = "$env:USERPROFILE\Documents\Rockstar Games\GTA V\settings.xml"
     if (-not (Test-Path $gtaSettings) -and $HasOneDriveFolder) {
         $gtaSettings = "$OneDrivePath\Documents\Rockstar Games\GTA V\settings.xml"
@@ -161,42 +136,36 @@ function Generate-CheckerReport {
                 Write-Output "    $($line.Line.Trim())"
             }
         } else {
-            Write-Output "    [+] Отрицательных параметров в settings.xml не обнаружено"
+            Write-Output "    [+] No negative values detected in settings.xml"
         }
     } else {
-        Write-Output "    [!] Файл settings.xml не найден"
+        Write-Output "    [!] settings.xml not found"
     }
 
-    # Аптайм системных процессов
-    Write-Output "`nВремя работы ключевых процессов (Process Uptime):"
-    Write-Output "------------------------------------------------"
+    Write-Output "`nProcess Uptime Scan:"
+    Write-Output "================================================"
     $criticalProcesses = @("dnscache", "dwm", "explorer", "lsass", "PcaSvc", "sysmain", "WSearch", "DiagTrack", "DPS")
     foreach ($procName in $criticalProcesses) {
         $p = Get-Process -Name $procName -ErrorAction SilentlyContinue
         if ($p) {
             $pUptime = (Get-Date) - $p.StartTime
-            $pStr = "{0}д {1:D2}:{2:D2}:{3:D2}" -f $pUptime.Days, $pUptime.Hours, $pUptime.Minutes, $pUptime.Seconds
-            Write-Output ("{0,-15} Аптайм: {1}" -f $procName, $pStr)
+            $pStr = "{0}d {1:D2}:{2:D2}:{3:D2}" -f $pUptime.Days, $pUptime.Hours, $pUptime.Minutes, $pUptime.Seconds
+            Write-Output ("{0,-15} Uptime: {1}" -f $procName, $pStr)
         } else {
-            Write-Output ("{0,-15} СТАТУС: Остановлен / Не найден" -f $procName)
+            Write-Output ("{0,-15} STATUS: Stopped / Not Found" -f $procName)
         }
     }
 
-    Write-Output "`nОбщий аптайм системы: {0} Дней, {1:D2}:{2:D2}:{3:D2}" -f $uptime.Days, $uptime.Hours, $uptime.Minutes, $uptime.Seconds
+    Write-Output "`nTotal System Uptime: {0} Days, {1:D2}:{2:D2}:{3:D2}" -f $uptime.Days, $uptime.Hours, $uptime.Minutes, $uptime.Seconds
 
-    # --------------------------------------------------------------------------
-    # 3. ПОИСК УДАЛЕННЫХ EXECUTABLE ФАЙЛОВ (USN Journal Analysis)
-    # --------------------------------------------------------------------------
     Write-Output ""
-    Write-Output "------------------------------------------"
-    Write-Output "| Сканирование удаленных файлов (USN)    |"
-    Write-Output "------------------------------------------"
+    Write-Output "=========================================="
+    Write-Output "| Deleted Executables Scan (USN Journal) |"
+    Write-Output "=========================================="
     Write-Output ""
 
     try {
-        # Запрос записей удаления .exe из USN Журнала диска C:
         $usnRaw = cmd /c "fsutil usn readjournal C: csv" 2>$null | Select-String "FILE_DELETE", "0x80000200", "0x00000200"
-        
         $deletedExeList = [System.Collections.Generic.List[string]]::new()
 
         if ($usnRaw) {
@@ -213,24 +182,21 @@ function Generate-CheckerReport {
 
         $uniqueDeleted = $deletedExeList | Select-Object -Unique -First 25
         if ($uniqueDeleted) {
-            Write-Output "[!] Обнаружены недавно удаленные исполняемые файлы (.exe):"
+            Write-Output "[!] Recently deleted executable files (.exe) found:"
             foreach ($delFile in $uniqueDeleted) {
-                Write-Output "  [-] Удален файл: $delFile"
+                Write-Output "  [-] Deleted: $delFile"
             }
         } else {
-            Write-Output "[+] В журнале USN не найдено подозрительных удалений .exe файлов"
+            Write-Output "[+] No suspicious deleted .exe files found in USN Journal"
         }
     } catch {
-        Write-Output "[!] Ошибка доступа к USN Журналу. Требуются права Администратора."
+        Write-Output "[!] Failed to read USN Journal (Admin privileges required)"
     }
 
-    # --------------------------------------------------------------------------
-    # 4. АНАЛИЗ ВМЕШАТЕЛЬСТВА (Tampering & Prefetch)
-    # --------------------------------------------------------------------------
     Write-Output ""
-    Write-Output "-------------------"
-    Write-Output "|   Вмешательство |"
-    Write-Output "-------------------"
+    Write-Output "==================="
+    Write-Output "|    Tampering    |"
+    Write-Output "==================="
     Write-Output ""
     
     $prefetchPath = "C:\Windows\Prefetch"
@@ -247,89 +213,79 @@ function Generate-CheckerReport {
     }
 
     if ($missingPF.Count -gt 0) {
-        Write-Output "[!] Ошибка целостности Prefetch (Отсутствуют ожидаемые записи: $($missingPF -join ', '))"
+        Write-Output "[!] Prefetch integrity warning (Missing records: $($missingPF -join ', '))"
     } else {
-        Write-Output "[+] Целостность Prefetch в норме"
+        Write-Output "[+] Prefetch integrity normal"
     }
 
-    # Подмена имени / Скрытые имена с пробелами
     $JournalUnicode = Get-ChildItem -Path "$env:LOCALAPPDATA\Temp", "C:\Windows\Prefetch" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "\s{3,}" }
     if ($JournalUnicode) {
         foreach ($uFile in $JournalUnicode) {
-            Write-Output "[-] Обнаружена маскировка символами/пробелами: $($uFile.FullName)"
+            Write-Output "[-] Suspicious Unicode/Space manipulation found: $($uFile.FullName)"
         }
     } else {
-        Write-Output "[+] Обфускация имен файлов в Temp/Prefetch не обнаружена"
+        Write-Output "[+] No file name obfuscation found in Temp/Prefetch"
     }
 
-    # --------------------------------------------------------------------------
-    # 5. АВТОЗАГРУЗКА И УГРОЗЫ
-    # --------------------------------------------------------------------------
     Write-Output ""
-    Write-Output "-------------------"
-    Write-Output "|      Угрозы     |"
-    Write-Output "-------------------"
+    Write-Output "==================="
+    Write-Output "|      Threats    |"
+    Write-Output "==================="
     Write-Output ""
 
-    Write-Output "Проверка автозагрузки в реестре (HKCU Run):"
+    Write-Output "User Startup Registry Keys Check (HKCU Run):"
     $RunKeys = Get-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -ErrorAction SilentlyContinue
     if ($RunKeys) {
         foreach ($key in $RunKeys.psobject.Properties) {
             if ($key.Name -notmatch "PSPath|PSParentPath|PSChildName|PSDrive|Provider|Attach") {
-                Write-Output "  - Запись автозапуска: $($key.Name) = $($key.Value)"
+                Write-Output "  - Autorun Entry: $($key.Name) = $($key.Value)"
             }
         }
     }
 
-    # --------------------------------------------------------------------------
-    # 6. ЖУРНАЛЫ СОБЫТИЙ WINDOWS
-    # --------------------------------------------------------------------------
     Write-Output ""
-    Write-Output "-------------------"
-    Write-Output "|     События     |"
-    Write-Output "-------------------"
+    Write-Output "==================="
+    Write-Output "|      Events     |"
+    Write-Output "==================="
     Write-Output ""
 
-    Write-Output "События срабатывания Защитника (Последние 5):"
+    Write-Output "Defender Warning / Threat Events (Recent 5):"
     $defEvents = Get-WinEvent -LogName "Microsoft-Windows-Windows Defender/Operational" -MaxEvents 5 -ErrorAction SilentlyContinue
     if ($defEvents) {
         foreach ($e in $defEvents) {
             Write-Output "  [$($e.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss'))] EventID: $($e.Id) | $($e.Message.Substring(0, [Math]::Min(80, $e.Message.Length)))"
         }
     } else {
-        Write-Output "  [+] Свежих предупреждений Защитника не найдено"
+        Write-Output "  [+] No recent Defender warning logs found"
     }
 
-    Write-Output "`nСобытия установки/изменения служб (ID 7045/7040):"
+    Write-Output "`nService Installation Events (ID 7045/7040):"
     $svcEvents = Get-WinEvent -FilterHashtable @{LogName='System'; Id=7045,7040} -MaxEvents 5 -ErrorAction SilentlyContinue
     if ($svcEvents) {
         foreach ($se in $svcEvents) {
             Write-Output "  [$($se.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss'))] EventID: $($se.Id) | $($se.Message.Substring(0, [Math]::Min(70, $se.Message.Length)))"
         }
     } else {
-        Write-Output "  [+] Подозрительных изменений служб не зафиксировано"
+        Write-Output "  [+] No recent service change events"
     }
 
-    Write-Output "`nВыполнение PowerShell скриптов (ID 4104):"
+    Write-Output "`nPowerShell Execution Events (ID 4104):"
     $psEvents = Get-WinEvent -LogName "Microsoft-Windows-PowerShell/Operational" -MaxEvents 3 -ErrorAction SilentlyContinue
     if ($psEvents) {
         foreach ($pe in $psEvents) {
-            Write-Output "  [$($pe.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss'))] EventID: 4104 | Зафиксирован запуск скрипта"
+            Write-Output "  [$($pe.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss'))] EventID: 4104 | Script block logged"
         }
     } else {
-        Write-Output "  [+] Журнал PowerShell чист или отключен"
+        Write-Output "  [+] PowerShell Operational log clear or disabled"
     }
 
     Write-Output ""
     Write-Output "==========================================================================="
-    Write-Output "                           КОНЕЦ ОТЧЕТА                                    "
+    Write-Output "                           END OF REPORT                                   "
     Write-Output "==========================================================================="
 }
 
-# --------------------------------------------------------------------------
-# СОХРАНЕНИЕ В ФАЙЛ
-# --------------------------------------------------------------------------
 Generate-CheckerReport | Out-File -FilePath $OutputFile -Encoding utf8
 
-Write-Host "`n[+] Проверка успешно завершена!" -ForegroundColor Green
-Write-Host "[+] Отчет сохранен по пути: $OutputFile" -ForegroundColor Yellow
+Write-Host "`n[+] Scan completed successfully!" -ForegroundColor Green
+Write-Host "[+] Report saved to: $OutputFile" -ForegroundColor Yellow
